@@ -14,6 +14,11 @@ class Settings(BaseSettings):
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     db_pool_size: int = Field(default=5, ge=1)
     db_max_overflow: int = Field(default=5, ge=0)
+    outbox_poll_interval: float = Field(default=0.5, gt=0)
+    outbox_batch_size: int = Field(default=50, ge=1, le=1000)
+    outbox_retry_max_delay: float = Field(default=30, ge=1)
+    publish_timeout: float = Field(default=5, gt=0)
+    webhook_timeout: float = Field(default=5, gt=0)
 
     @field_validator("api_key")
     @classmethod

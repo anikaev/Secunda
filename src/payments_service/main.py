@@ -6,6 +6,7 @@ from fastapi import Depends, FastAPI
 
 from payments_service.api.auth import require_api_key
 from payments_service.api.health import router as health_router
+from payments_service.api.payments import router as payments_router
 from payments_service.core.config import Settings, get_settings
 from payments_service.db.session import Database
 
@@ -34,4 +35,5 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.settings = settings
     app.include_router(health_router)
+    app.include_router(payments_router)
     return app

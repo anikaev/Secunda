@@ -12,6 +12,7 @@ x-application: &application
 services:
   postgres:
     image: postgres:17-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-payments}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-payments}
@@ -28,6 +29,7 @@ services:
 
   rabbitmq:
     image: rabbitmq:4.1-management-alpine
+    restart: unless-stopped
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-payments}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-payments}
@@ -51,6 +53,7 @@ services:
 
   api:
     <<: *application
+    restart: unless-stopped
     ports:
       - "127.0.0.1:8000:8000"
     depends_on:
@@ -72,6 +75,8 @@ services:
 
   consumer:
     <<: *application
+    restart: unless-stopped
+    stop_grace_period: 30s
     command: ["faststream", "run", "payments_service.consumer:app"]
     depends_on:
       migrate:
