@@ -1,12 +1,9 @@
-from collections.abc import AsyncIterator
+from unittest.mock import MagicMock
 
 import pytest
 from asyncpg import InvalidPasswordError
-from fastapi import FastAPI
 from httpx import AsyncClient
 from sqlalchemy.exc import OperationalError
-
-from payments_service.db.session import get_session
 
 
 @pytest.mark.parametrize("path", ["/health", "/health/ready"])
@@ -35,16 +32,9 @@ async def test_authenticated_liveness_does_not_require_database(client: AsyncCli
     ],
 )
 async def test_readiness_returns_503_without_exposing_database_error(
-    app: FastAPI, client: AsyncClient, error: Exception
+    client: AsyncClient, db_session: MagicMock, error: Exception
 ) -> None:
-    class UnavailableSession:
-        async def execute(self, statement: object) -> None:
-            raise error
-
-    async def unavailable_session() -> AsyncIterator[UnavailableSession]:
-        yield UnavailableSession()
-
-    app.dependency_overrides[get_session] = unavailable_session
+    db_session.execute.side_effect = error
     response = await client.get("/health/ready", headers={"X-API-Key": "test-api-key"})
     assert response.status_code == 503
     assert response.json() == {"detail": "Database is unavailable"}

@@ -26,35 +26,19 @@ class PaymentProcessor:
         self.webhook_client = webhook_client
         self.gateway = gateway
 
-    async def lock_payment(self, session: AsyncSession, event: PaymentEvent) -> Payment:
-        payment = await session.scalar(
-            select(Payment).where(Payment.id == event.payment_id).with_for_update()
-        )
-        if payment is None:
-            raise LookupError("Payment not found")
-        return payment
-
-    async def is_handled(
-        self, session: AsyncSession, payment: Payment, event: PaymentEvent
-    ) -> bool:
-        if payment.webhook_delivered_at is not None:
-            return True
-        retry = await session.get(OutboxEvent, event.retry_id)
-        return retry is not None
-
     async def process(self, event: PaymentEvent) -> None:
         # Сохраняем оплату отдельно: ошибка webhook не должна запускать шлюз заново.
         async with self.sessions.begin() as session:
-            payment = await self.lock_payment(session, event)
-            if await self.is_handled(session, payment, event):
+            payment = await self._lock_payment(session, event.payment_id)
+            if await self._already_handled(session, payment, event):
                 return
             if payment.status == PaymentStatus.PENDING:
                 payment.status = await self.gateway(payment.id)
                 payment.processed_at = datetime.now(UTC)
 
         async with self.sessions.begin() as session:
-            payment = await self.lock_payment(session, event)
-            if await self.is_handled(session, payment, event):
+            payment = await self._lock_payment(session, event.payment_id)
+            if await self._already_handled(session, payment, event):
                 return
             payload = WebhookPayload(
                 event_id=event.event_id,
@@ -86,3 +70,19 @@ class PaymentProcessor:
                 )
             else:
                 payment.webhook_delivered_at = datetime.now(UTC)
+
+    async def _lock_payment(self, session: AsyncSession, payment_id: UUID) -> Payment:
+        payment = await session.scalar(
+            select(Payment).where(Payment.id == payment_id).with_for_update()
+        )
+        if payment is None:
+            raise LookupError("Payment not found")
+        return payment
+
+    async def _already_handled(
+        self, session: AsyncSession, payment: Payment, event: PaymentEvent
+    ) -> bool:
+        if payment.webhook_delivered_at is not None:
+            return True
+        retry = await session.get(OutboxEvent, event.retry_id)
+        return retry is not None

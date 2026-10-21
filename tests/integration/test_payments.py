@@ -6,7 +6,7 @@ import aio_pika
 import httpx
 import pytest
 from aio_pika.abc import AbstractChannel, AbstractQueue
-from sqlalchemy import event, func, select, text
+from sqlalchemy import event, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
@@ -18,9 +18,11 @@ from tests.integration.helpers import (
     API_HEADERS,
     API_URL,
     create_webhook,
+    fail_outbox_commit,
     get_payment,
     get_webhook_requests,
     payment_data,
+    process_control_payment,
     submit_payment,
     wait_for_dead_message,
     wait_for_webhook,
@@ -156,10 +158,7 @@ async def test_duplicate_event_does_not_repeat_payment_or_webhook(
     exchange = await rabbit_channel.get_exchange(EXCHANGE.name)
     await exchange.publish(aio_pika.Message(body), routing_key=NEW_QUEUE)
 
-    # Контрольный платёж идёт следом в той же очереди: его обработка подтверждает обработку дубля.
-    next_webhook_id = await create_webhook(client)
-    next_payment = await submit_payment(client, next_webhook_id)
-    await wait_for_webhook(client, next_payment["payment_id"])
+    await process_control_payment(client)
 
     assert await get_webhook_requests(client, webhook_id) == requests_before
     payment_after = await get_payment(client, payment_id)
@@ -249,25 +248,7 @@ async def test_publication_survives_failure_before_outbox_commit(
     payment_id, event_id = uuid4(), uuid4()
     data = PaymentCreate(**payment_data(webhook_id))
 
-    async with engine.begin() as connection:
-        await connection.execute(
-            text(f"""
-            CREATE FUNCTION test_fail_outbox_commit() RETURNS trigger LANGUAGE plpgsql AS $$
-            BEGIN
-                IF NEW.id = '{event_id}'::uuid AND NEW.published_at IS NOT NULL THEN
-                    RAISE EXCEPTION 'simulated outbox commit failure';
-                END IF;
-                RETURN NEW;
-            END $$
-        """)
-        )
-        await connection.execute(
-            text("""
-            CREATE TRIGGER test_fail_outbox_commit BEFORE UPDATE ON outbox
-            FOR EACH ROW EXECUTE FUNCTION test_fail_outbox_commit()
-        """)
-        )
-    try:
+    async with fail_outbox_commit(engine, event_id):
         async with AsyncSession(engine) as session, session.begin():
             session.add(
                 Payment(
@@ -295,10 +276,6 @@ async def test_publication_survives_failure_before_outbox_commit(
         async with AsyncSession(engine) as session:
             stored_event = await session.get(OutboxEvent, event_id)
             assert stored_event.published_at is None
-    finally:
-        async with engine.begin() as connection:
-            await connection.execute(text("DROP TRIGGER test_fail_outbox_commit ON outbox"))
-            await connection.execute(text("DROP FUNCTION test_fail_outbox_commit()"))
 
     async def publication_committed() -> bool:
         async with AsyncSession(engine) as session:
@@ -306,9 +283,7 @@ async def test_publication_survives_failure_before_outbox_commit(
             return stored_event.published_at is not None
 
     await wait_until(publication_committed)
-    next_webhook_id = await create_webhook(client)
-    next_payment = await submit_payment(client, next_webhook_id)
-    await wait_for_webhook(client, next_payment["payment_id"])
+    await process_control_payment(client)
     assert len(await get_webhook_requests(client, webhook_id)) == 1
     payment_after = await get_payment(client, str(payment_id))
     assert payment_after["processed_at"] == payment_before["processed_at"]

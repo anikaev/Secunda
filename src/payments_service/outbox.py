@@ -1,12 +1,13 @@
 import asyncio
 import logging
+from contextlib import suppress
 from datetime import UTC, datetime, timedelta
 
 from faststream.rabbit import RabbitBroker
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from payments_service.core.config import Settings
+from payments_service.config import Settings
 from payments_service.db.models import OutboxEvent
 from payments_service.messaging import publish_event
 
@@ -57,7 +58,5 @@ class OutboxRelay:
                         break
             except Exception as exc:
                 logger.error("Outbox relay failed: %s", type(exc).__name__)
-            try:
+            with suppress(TimeoutError):
                 await asyncio.wait_for(stop.wait(), timeout=self.settings.outbox_poll_interval)
-            except TimeoutError:
-                pass

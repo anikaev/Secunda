@@ -106,9 +106,9 @@ async def check_payment_flow(client: httpx.AsyncClient) -> None:
     assert len(received) == 1
 
 
-async def run_command(command: str, state: dict) -> dict | None:
+async def run_step(step: str, state: dict) -> dict | None:
     async with httpx.AsyncClient(timeout=10, trust_env=False) as client:
-        match command:
+        match step:
             case "create-pending":
                 return await create_pending_payment(client)
             case "prepare-crash":
@@ -126,20 +126,32 @@ async def run_command(command: str, state: dict) -> dict | None:
             case "check-payment":
                 await check_payment_flow(client)
             case _:
-                raise ValueError(f"Неизвестная команда: {command}")
+                raise ValueError(f"Неизвестный шаг: {step}")
     return None
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Проверка восстановления платёжного сервиса")
-    parser.add_argument("command", help="Команда сценария из scripts/test-compose.sh")
-    command = parser.parse_args().command
-
+    parser.add_argument(
+        "step",
+        choices=(
+            "create-pending",
+            "prepare-crash",
+            "release-webhook",
+            "check-delivery",
+            "check-redelivery",
+            "check-db-outage",
+            "check-readiness",
+            "check-payment",
+        ),
+        help="Шаг сценария из scripts/test-compose.sh",
+    )
+    step = parser.parse_args().step
     state = json.loads(STATE_FILE.read_text()) if STATE_FILE.exists() else {}
-    updated_state = asyncio.run(run_command(command, state))
-    if updated_state is not None:
-        STATE_FILE.write_text(json.dumps(updated_state))
-    print(f"Проверка выполнена: {command}", flush=True)
+    new_state = asyncio.run(run_step(step, state))
+    if new_state is not None:
+        STATE_FILE.write_text(json.dumps(new_state))
+    print(f"Проверка выполнена: {step}", flush=True)
 
 
 if __name__ == "__main__":

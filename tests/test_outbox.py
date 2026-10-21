@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 import pytest
 from faststream.rabbit import RabbitBroker
 
-from payments_service.core.config import Settings
+from payments_service.config import Settings
 from payments_service.db.models import OutboxEvent
 from payments_service.outbox import OutboxRelay
 from payments_service.schemas import PaymentEvent

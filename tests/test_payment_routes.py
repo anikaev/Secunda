@@ -1,11 +1,9 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from fastapi import FastAPI
 from httpx import AsyncClient
 
 from payments_service.db.models import Payment
-from payments_service.db.session import get_session
 from payments_service.services.payments import IdempotencyConflict
 
 
@@ -86,14 +84,9 @@ async def test_create_returns_409_for_reused_key(
 
 
 async def test_get_serializes_decimal_and_metadata(
-    app: FastAPI, client: AsyncClient, payment: Payment, session: MagicMock
+    client: AsyncClient, payment: Payment, db_session: MagicMock
 ) -> None:
-    session.get.return_value = payment
-
-    async def override_session():
-        yield session
-
-    app.dependency_overrides[get_session] = override_session
+    db_session.get.return_value = payment
     response = await client.get(
         f"/api/v1/payments/{payment.id}", headers={"X-API-Key": "test-api-key"}
     )
@@ -104,12 +97,9 @@ async def test_get_serializes_decimal_and_metadata(
 
 
 async def test_get_unknown_payment_returns_404(
-    app: FastAPI, client: AsyncClient, payment: Payment, session: MagicMock
+    client: AsyncClient, payment: Payment, db_session: MagicMock
 ) -> None:
-    async def override_session():
-        yield session
-
-    app.dependency_overrides[get_session] = override_session
+    db_session.get.return_value = None
     response = await client.get(
         f"/api/v1/payments/{payment.id}", headers={"X-API-Key": "test-api-key"}
     )

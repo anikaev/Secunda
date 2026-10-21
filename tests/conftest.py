@@ -9,8 +9,9 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from payments_service.core.config import Settings
+from payments_service.config import Settings
 from payments_service.db.models import Currency, Payment, PaymentStatus
+from payments_service.db.session import get_session
 from payments_service.main import create_app
 from payments_service.schemas import PaymentEvent
 
@@ -64,6 +65,15 @@ def session(payment: Payment) -> MagicMock:
     session = MagicMock(spec=AsyncSession)
     session.scalar.return_value = payment
     session.get.return_value = None
+    return session
+
+
+@pytest.fixture
+def db_session(app: FastAPI, session: MagicMock) -> MagicMock:
+    async def override_session() -> AsyncIterator[MagicMock]:
+        yield session
+
+    app.dependency_overrides[get_session] = override_session
     return session
 
 

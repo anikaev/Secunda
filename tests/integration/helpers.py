@@ -1,10 +1,13 @@
 import asyncio
 import os
-from collections.abc import Awaitable, Callable
-from uuid import uuid4
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
+from uuid import UUID, uuid4
 
 import httpx
 from aio_pika.abc import AbstractIncomingMessage, AbstractQueue
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 API_URL = "http://api:8000"
 WEBHOOK_URL = "http://webhook:8080"
@@ -83,3 +86,38 @@ async def wait_for_dead_message(queue: AbstractQueue) -> AbstractIncomingMessage
     message = await wait_until(lambda: queue.get(fail=False))
     await message.ack()
     return message
+
+
+async def process_control_payment(client: httpx.AsyncClient) -> None:
+    # Контрольный платёж идёт следом, поэтому после него дубль уже должен быть обработан.
+    webhook_id = await create_webhook(client)
+    payment = await submit_payment(client, webhook_id)
+    await wait_for_webhook(client, payment["payment_id"])
+
+
+@asynccontextmanager
+async def fail_outbox_commit(engine: AsyncEngine, event_id: UUID) -> AsyncIterator[None]:
+    async with engine.begin() as connection:
+        await connection.execute(
+            text(f"""
+                CREATE FUNCTION test_fail_outbox_commit() RETURNS trigger LANGUAGE plpgsql AS $$
+                BEGIN
+                    IF NEW.id = '{event_id}'::uuid AND NEW.published_at IS NOT NULL THEN
+                        RAISE EXCEPTION 'simulated outbox commit failure';
+                    END IF;
+                    RETURN NEW;
+                END $$
+            """)
+        )
+        await connection.execute(
+            text("""
+                CREATE TRIGGER test_fail_outbox_commit BEFORE UPDATE ON outbox
+                FOR EACH ROW EXECUTE FUNCTION test_fail_outbox_commit()
+            """)
+        )
+    try:
+        yield
+    finally:
+        async with engine.begin() as connection:
+            await connection.execute(text("DROP TRIGGER test_fail_outbox_commit ON outbox"))
+            await connection.execute(text("DROP FUNCTION test_fail_outbox_commit()"))

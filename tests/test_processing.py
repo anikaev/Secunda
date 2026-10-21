@@ -61,16 +61,13 @@ async def test_third_webhook_failure_goes_to_dlq(
 async def test_scheduled_retry_prevents_repeating_current_attempt(
     event: PaymentEvent, session: MagicMock, sessions: MagicMock
 ) -> None:
-    post = AsyncMock(
-        return_value=httpx.Response(503, request=httpx.Request("POST", "https://test"))
-    )
     client = MagicMock(spec=httpx.AsyncClient)
-    client.post = post
+    client.post.return_value = httpx.Response(503, request=httpx.Request("POST", "https://test"))
     processor = PaymentProcessor(sessions, client, AsyncMock(return_value=PaymentStatus.SUCCEEDED))
     await processor.process(event)
     session.get.return_value = session.add.call_args.args[0]
     await processor.process(event)
-    post.assert_awaited_once()
+    client.post.assert_awaited_once()
 
 
 async def test_declined_payment_is_final_and_not_retried(

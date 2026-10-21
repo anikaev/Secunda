@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from payments_service.core.config import Settings
+from payments_service.config import Settings
 
 
 def test_configuration_does_not_expose_secrets(settings: Settings) -> None:

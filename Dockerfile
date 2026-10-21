@@ -10,7 +10,7 @@ WORKDIR /app
 COPY --from=ghcr.io/astral-sh/uv:0.10.6 /uv /usr/local/bin/uv
 COPY pyproject.toml uv.lock README.md ./
 COPY src ./src
-# Необязательный корпоративный сертификат CA доступен только во время сборки.
+# Сертификат нужен только при сборке за корпоративным прокси.
 RUN --mount=type=secret,id=build_ca \
     if [ -f /run/secrets/build_ca ]; then export SSL_CERT_FILE=/run/secrets/build_ca; fi; \
     uv sync --native-tls --frozen --no-dev --no-editable \

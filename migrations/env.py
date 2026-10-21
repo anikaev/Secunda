@@ -6,7 +6,7 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from payments_service.core.config import get_settings
+from payments_service.config import get_settings
 from payments_service.db.models import Payment
 
 config = context.config

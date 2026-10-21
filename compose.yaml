@@ -1,7 +1,9 @@
 name: async-payment-service
 
 x-application: &application
-  build: .
+  build:
+    context: .
+    target: production
   image: async-payment-service:local
   init: true
   env_file: .env

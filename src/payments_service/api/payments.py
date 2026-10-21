@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from payments_service.db.models import Payment
@@ -10,13 +10,13 @@ from payments_service.schemas import PaymentAccepted, PaymentCreate, PaymentDeta
 from payments_service.services.payments import IdempotencyConflict, create_payment
 
 router = APIRouter(prefix="/api/v1/payments", tags=["payments"])
-Session = Annotated[AsyncSession, Depends(get_session)]
+SessionDep = Annotated[AsyncSession, Depends(get_session)]
 
 
-@router.post("", status_code=status.HTTP_202_ACCEPTED, response_model=PaymentAccepted)
+@router.post("", status_code=202, response_model=PaymentAccepted)
 async def post_payment(
     data: PaymentCreate,
-    session: Session,
+    session: SessionDep,
     idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1, max_length=255)],
 ) -> PaymentAccepted:
     if not idempotency_key.strip():
@@ -31,7 +31,7 @@ async def post_payment(
 
 
 @router.get("/{payment_id}", response_model=PaymentDetail)
-async def get_payment(payment_id: UUID, session: Session) -> PaymentDetail:
+async def get_payment(payment_id: UUID, session: SessionDep) -> PaymentDetail:
     payment = await session.get(Payment, payment_id)
     if payment is None:
         raise HTTPException(status_code=404, detail="Payment not found")

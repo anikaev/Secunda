@@ -8,7 +8,7 @@ from faststream import AckPolicy, FastStream
 from faststream.rabbit import Channel, RabbitBroker
 from faststream.rabbit.annotations import RabbitMessage
 
-from payments_service.core.config import Settings, get_settings
+from payments_service.config import Settings, get_settings
 from payments_service.db.session import Database
 from payments_service.messaging import EXCHANGE, RabbitTopology
 from payments_service.outbox import OutboxRelay

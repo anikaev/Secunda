@@ -17,7 +17,7 @@ check_recovery() {
 }
 
 cleanup() {
-  exit_code=$?
+  local exit_code=$?
   trap - EXIT
   if [ "$exit_code" -ne 0 ]; then
     "${compose[@]}" ps -a || true

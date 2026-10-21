@@ -1,4 +1,3 @@
-# Дополнение к compose.yaml для отдельного проекта: порты хоста и .env не нужны.
 name: secunda-integration
 
 x-test-environment: &test-environment
@@ -40,9 +39,17 @@ services:
       target: test
     image: ${COMPOSE_PROJECT_NAME}-tests:local
     init: true
-    command: ["uvicorn", "tests.integration.webhook_app:app", "--host", "0.0.0.0", "--port", "8080", "--log-level", "warning"]
+    command: >-
+      uvicorn tests.integration.webhook_app:app
+      --host 0.0.0.0 --port 8080 --log-level warning
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health', timeout=2)"]
+      test:
+        - CMD
+        - python
+        - -c
+        - >-
+          import urllib.request;
+          urllib.request.urlopen('http://localhost:8080/health', timeout=2)
       interval: 2s
       timeout: 3s
       retries: 15

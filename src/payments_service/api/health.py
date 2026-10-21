@@ -3,7 +3,7 @@ import logging
 from typing import Annotated, Literal
 
 from asyncpg import PostgresError
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
@@ -32,7 +32,7 @@ async def readiness(session: Annotated[AsyncSession, Depends(get_session)]) -> H
     except (SQLAlchemyError, PostgresError, OSError, TimeoutError) as exc:
         logger.warning("Database readiness check failed: %s", type(exc).__name__)
         raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            status_code=503,
             detail="Database is unavailable",
         ) from exc
     return HealthResponse()

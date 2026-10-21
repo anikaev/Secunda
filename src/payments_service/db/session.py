@@ -3,7 +3,7 @@ from collections.abc import AsyncIterator
 from fastapi import Request
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from payments_service.core.config import Settings
+from payments_service.config import Settings
 
 
 class Database:
