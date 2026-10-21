@@ -19,7 +19,7 @@ from payments_service.worker import PaymentWorker
 def create_consumer(settings: Settings) -> FastStream:
     logging.basicConfig(level=settings.log_level)
     database = Database(settings)
-    client = httpx.AsyncClient(
+    webhook_client = httpx.AsyncClient(
         timeout=settings.webhook_timeout, follow_redirects=False, trust_env=False
     )
     broker = RabbitBroker(
@@ -29,9 +29,8 @@ def create_consumer(settings: Settings) -> FastStream:
         graceful_timeout=20,
     )
     topology = RabbitTopology()
-    worker = PaymentWorker(
-        PaymentProcessor(database.sessions, client), broker, settings.publish_timeout
-    )
+    processor = PaymentProcessor(database.sessions, webhook_client)
+    worker = PaymentWorker(processor, broker, settings.publish_timeout)
     relay = OutboxRelay(database.sessions, broker, settings)
     stop = asyncio.Event()
     relay_task: asyncio.Task[None] | None = None
@@ -47,13 +46,13 @@ def create_consumer(settings: Settings) -> FastStream:
                 with suppress(asyncio.CancelledError):
                     await relay_task
             await broker.stop()
-            await client.aclose()
+            await webhook_client.aclose()
             await database.close()
 
     app = FastStream(broker, lifespan=lifespan)
 
     @app.on_startup
-    async def setup() -> None:
+    async def connect_broker() -> None:
         await broker.connect()
         await topology.declare(broker)
 

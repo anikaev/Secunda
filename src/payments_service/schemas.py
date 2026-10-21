@@ -1,19 +1,17 @@
 from datetime import datetime
 from decimal import Decimal
-from typing import Annotated, Literal
+from typing import Literal
 from uuid import UUID, uuid5
 
 from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, JsonValue, field_validator
 
 from payments_service.db.models import Currency, PaymentStatus
 
-Amount = Annotated[Decimal, Field(gt=0, max_digits=18, decimal_places=2, allow_inf_nan=False)]
-
 
 class PaymentCreate(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
-    amount: Amount
+    amount: Decimal = Field(gt=0, max_digits=18, decimal_places=2, allow_inf_nan=False)
     currency: Currency
     description: str = Field(max_length=2000)
     metadata: dict[str, JsonValue] = Field(default_factory=dict)
@@ -55,7 +53,8 @@ class PaymentEvent(BaseModel):
     error_type: str | None = Field(default=None, max_length=100)
 
     @property
-    def outcome_id(self) -> UUID:
+    def retry_id(self) -> UUID:
+        # При повторной доставке этой попытки ID записи в outbox должен остаться тем же.
         return uuid5(self.event_id, f"attempt:{self.attempt}")
 
 

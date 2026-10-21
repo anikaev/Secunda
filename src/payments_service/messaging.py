@@ -10,17 +10,23 @@ DEAD_EXCHANGE = RabbitExchange("payments.dlx", durable=True)
 
 
 def retry_outbox_event(event: PaymentEvent, error_type: str) -> OutboxEvent:
-    final_attempt = event.attempt == 3
-    next_event = event.model_copy(
-        update={
-            "attempt": event.attempt if final_attempt else event.attempt + 1,
-            "error_type": error_type,
-        }
+    if event.attempt == 3:
+        next_attempt = event.attempt
+        topic = DEAD_QUEUE
+    else:
+        next_attempt = event.attempt + 1
+        topic = f"payments.retry.{next_attempt}"
+
+    retry = PaymentEvent(
+        event_id=event.event_id,
+        payment_id=event.payment_id,
+        attempt=next_attempt,
+        error_type=error_type,
     )
     return OutboxEvent(
-        id=event.outcome_id,
-        topic=DEAD_QUEUE if final_attempt else f"payments.retry.{next_event.attempt}",
-        payload=next_event.model_dump(mode="json", exclude_none=True),
+        id=event.retry_id,
+        topic=topic,
+        payload=retry.model_dump(mode="json", exclude_none=True),
     )
 
 
@@ -29,13 +35,8 @@ class RabbitTopology:
         self.main_queue = self.dead_letter_queue(NEW_QUEUE, DEAD_EXCHANGE.name, DEAD_QUEUE)
         self.dead_queue = RabbitQueue(DEAD_QUEUE, queue_type=QueueType.QUORUM, durable=True)
         self.retry_queues = [
-            self.dead_letter_queue(
-                f"payments.retry.{attempt}",
-                EXCHANGE.name,
-                NEW_QUEUE,
-                ttl_ms=1000 * 2 ** (attempt - 2),
-            )
-            for attempt in (2, 3)
+            self.dead_letter_queue(f"payments.retry.{attempt}", EXCHANGE.name, NEW_QUEUE, ttl_ms)
+            for attempt, ttl_ms in ((2, 1000), (3, 2000))
         ]
 
     @staticmethod

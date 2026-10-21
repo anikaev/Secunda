@@ -39,7 +39,8 @@ class OutboxRelay:
             try:
                 await publish_event(self.broker, event, self.settings.publish_timeout)
             except Exception as exc:
-                delay = min(2 ** min(event.attempts - 1, 20), self.settings.outbox_retry_max_delay)
+                retry_delay = 2 ** min(event.attempts - 1, 20)
+                delay = min(retry_delay, self.settings.outbox_retry_max_delay)
                 event.available_at = datetime.now(UTC) + timedelta(seconds=delay)
                 event.last_error = type(exc).__name__
                 logger.warning("Outbox event %s was not published: %s", event.id, event.last_error)

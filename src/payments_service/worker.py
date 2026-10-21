@@ -26,14 +26,15 @@ class PaymentWorker:
             logger.warning("Invalid payment event rejected")
             await message.reject(requeue=False)
             return
+
         try:
             await self.processor.process(event)
         except Exception as exc:
-            logger.error("Payment event %s failed: %s", event.event_id, type(exc).__name__)
+            error_type = type(exc).__name__
+            logger.error("Payment event %s failed: %s", event.event_id, error_type)
             try:
-                await publish_event(
-                    self.broker, retry_outbox_event(event, type(exc).__name__), self.publish_timeout
-                )
+                retry = retry_outbox_event(event, error_type)
+                await publish_event(self.broker, retry, self.publish_timeout)
             except Exception as publish_error:
                 logger.error("Retry publication failed: %s", type(publish_error).__name__)
                 await asyncio.sleep(1)

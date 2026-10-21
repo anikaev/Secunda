@@ -19,11 +19,11 @@ class PaymentProcessor:
     def __init__(
         self,
         sessions: async_sessionmaker[AsyncSession],
-        client: httpx.AsyncClient,
+        webhook_client: httpx.AsyncClient,
         gateway: Callable[[UUID], Awaitable[PaymentStatus]] = emulate_payment,
     ) -> None:
         self.sessions = sessions
-        self.client = client
+        self.webhook_client = webhook_client
         self.gateway = gateway
 
     async def lock_payment(self, session: AsyncSession, event: PaymentEvent) -> Payment:
@@ -34,15 +34,19 @@ class PaymentProcessor:
             raise LookupError("Payment not found")
         return payment
 
-    async def completed(self, session: AsyncSession, payment: Payment, event: PaymentEvent) -> bool:
-        return payment.webhook_delivered_at is not None or (
-            await session.get(OutboxEvent, event.outcome_id) is not None
-        )
+    async def is_handled(
+        self, session: AsyncSession, payment: Payment, event: PaymentEvent
+    ) -> bool:
+        if payment.webhook_delivered_at is not None:
+            return True
+        retry = await session.get(OutboxEvent, event.retry_id)
+        return retry is not None
 
     async def process(self, event: PaymentEvent) -> None:
+        # Сохраняем оплату отдельно: ошибка webhook не должна запускать шлюз заново.
         async with self.sessions.begin() as session:
             payment = await self.lock_payment(session, event)
-            if await self.completed(session, payment, event):
+            if await self.is_handled(session, payment, event):
                 return
             if payment.status == PaymentStatus.PENDING:
                 payment.status = await self.gateway(payment.id)
@@ -50,7 +54,7 @@ class PaymentProcessor:
 
         async with self.sessions.begin() as session:
             payment = await self.lock_payment(session, event)
-            if await self.completed(session, payment, event):
+            if await self.is_handled(session, payment, event):
                 return
             payload = WebhookPayload(
                 event_id=event.event_id,
@@ -62,7 +66,7 @@ class PaymentProcessor:
                 processed_at=payment.processed_at,
             )
             try:
-                response = await self.client.post(
+                response = await self.webhook_client.post(
                     payment.webhook_url,
                     json=payload.model_dump(mode="json"),
                     headers={
@@ -72,12 +76,13 @@ class PaymentProcessor:
                 )
                 response.raise_for_status()
             except httpx.HTTPError as exc:
-                session.add(retry_outbox_event(event, type(exc).__name__))
+                error_type = type(exc).__name__
+                session.add(retry_outbox_event(event, error_type))
                 logger.warning(
                     "Webhook for payment %s failed on attempt %s: %s",
                     payment.id,
                     event.attempt,
-                    type(exc).__name__,
+                    error_type,
                 )
             else:
                 payment.webhook_delivered_at = datetime.now(UTC)
