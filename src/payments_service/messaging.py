@@ -47,7 +47,6 @@ class RabbitTopology:
             "x-dead-letter-routing-key": routing_key,
             "x-dead-letter-strategy": "at-least-once",
             "x-overflow": "reject-publish",
-            "x-delivery-limit": -1,
         }
         if ttl_ms is not None:
             arguments["x-message-ttl"] = ttl_ms

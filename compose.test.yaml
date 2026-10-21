@@ -1,0 +1,62 @@
+# Дополнение к compose.yaml для отдельного проекта: порты хоста и .env не нужны.
+name: secunda-integration
+
+x-test-environment: &test-environment
+  API_KEY: integration-key
+  DATABASE_URL: postgresql+asyncpg://payments:payments@postgres:5432/payments
+  RABBITMQ_URL: amqp://payments:payments@rabbitmq:5672/
+  OUTBOX_POLL_INTERVAL: "0.1"
+  WEBHOOK_TIMEOUT: "30"
+  LOG_LEVEL: WARNING
+
+services:
+  postgres:
+    ports: !reset []
+    environment:
+      POSTGRES_USER: payments
+      POSTGRES_PASSWORD: payments
+      POSTGRES_DB: payments
+  rabbitmq:
+    ports: !reset []
+    environment:
+      RABBITMQ_DEFAULT_USER: payments
+      RABBITMQ_DEFAULT_PASS: payments
+  migrate:
+    image: ${COMPOSE_PROJECT_NAME}-app:local
+    env_file: !reset []
+    environment: *test-environment
+  api:
+    image: ${COMPOSE_PROJECT_NAME}-app:local
+    ports: !reset []
+    env_file: !reset []
+    environment: *test-environment
+  consumer:
+    image: ${COMPOSE_PROJECT_NAME}-app:local
+    env_file: !reset []
+    environment: *test-environment
+  webhook:
+    build:
+      context: .
+      target: test
+    image: ${COMPOSE_PROJECT_NAME}-tests:local
+    init: true
+    command: ["uvicorn", "tests.integration.webhook_app:app", "--host", "0.0.0.0", "--port", "8080", "--log-level", "warning"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health', timeout=2)"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+  tests:
+    build:
+      context: .
+      target: test
+    image: ${COMPOSE_PROJECT_NAME}-tests:local
+    init: true
+    env_file: !reset []
+    environment: *test-environment
+    volumes:
+      - test_state:/state
+    profiles: ["test"]
+
+volumes:
+  test_state:
