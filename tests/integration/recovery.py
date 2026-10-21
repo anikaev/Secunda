@@ -1,5 +1,3 @@
-"""Проверки восстановления после остановки сервисов через scripts/test-compose.sh."""
-
 import argparse
 import asyncio
 import json

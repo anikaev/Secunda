@@ -2,7 +2,6 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# Для одновременного запуска нескольких стендов задайте разные имена проектов.
 project="${TEST_COMPOSE_PROJECT:-secunda-integration}"
 compose=(docker compose -p "$project" -f compose.yaml -f compose.test.yaml)
 if [ -n "${TEST_COMPOSE_OVERRIDE:-}" ]; then

@@ -1,5 +1,3 @@
-"""Управляемый получатель webhook для интеграционных тестов."""
-
 import asyncio
 from dataclasses import dataclass, field
 

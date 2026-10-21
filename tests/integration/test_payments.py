@@ -6,7 +6,7 @@ import aio_pika
 import httpx
 import pytest
 from aio_pika.abc import AbstractChannel, AbstractQueue
-from sqlalchemy import event, func, select
+from sqlalchemy import event, func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
@@ -24,6 +24,7 @@ from tests.integration.helpers import (
     submit_payment,
     wait_for_dead_message,
     wait_for_webhook,
+    wait_until,
 )
 
 pytestmark = pytest.mark.integration
@@ -239,3 +240,76 @@ async def test_outbox_failure_rolls_back_payment(engine: AsyncEngine) -> None:
         assert count == 0
         assert len(outbox_ids) == 1
         assert await session.get(OutboxEvent, outbox_ids[0]) is None
+
+
+async def test_publication_survives_failure_before_outbox_commit(
+    client: httpx.AsyncClient, engine: AsyncEngine
+) -> None:
+    webhook_id = await create_webhook(client)
+    payment_id, event_id = uuid4(), uuid4()
+    data = PaymentCreate(**payment_data(webhook_id))
+
+    async with engine.begin() as connection:
+        await connection.execute(
+            text(f"""
+            CREATE FUNCTION test_fail_outbox_commit() RETURNS trigger LANGUAGE plpgsql AS $$
+            BEGIN
+                IF NEW.id = '{event_id}'::uuid AND NEW.published_at IS NOT NULL THEN
+                    RAISE EXCEPTION 'simulated outbox commit failure';
+                END IF;
+                RETURN NEW;
+            END $$
+        """)
+        )
+        await connection.execute(
+            text("""
+            CREATE TRIGGER test_fail_outbox_commit BEFORE UPDATE ON outbox
+            FOR EACH ROW EXECUTE FUNCTION test_fail_outbox_commit()
+        """)
+        )
+    try:
+        async with AsyncSession(engine) as session, session.begin():
+            session.add(
+                Payment(
+                    id=payment_id,
+                    amount=data.amount,
+                    currency=data.currency,
+                    description=data.description,
+                    metadata_=data.metadata,
+                    idempotency_key=webhook_id,
+                    webhook_url=str(data.webhook_url),
+                )
+            )
+            session.add(
+                OutboxEvent(
+                    id=event_id,
+                    topic=NEW_QUEUE,
+                    payload={
+                        "event_id": str(event_id),
+                        "payment_id": str(payment_id),
+                        "attempt": 1,
+                    },
+                )
+            )
+        payment_before = await wait_for_webhook(client, str(payment_id))
+        async with AsyncSession(engine) as session:
+            stored_event = await session.get(OutboxEvent, event_id)
+            assert stored_event.published_at is None
+    finally:
+        async with engine.begin() as connection:
+            await connection.execute(text("DROP TRIGGER test_fail_outbox_commit ON outbox"))
+            await connection.execute(text("DROP FUNCTION test_fail_outbox_commit()"))
+
+    async def publication_committed() -> bool:
+        async with AsyncSession(engine) as session:
+            stored_event = await session.get(OutboxEvent, event_id)
+            return stored_event.published_at is not None
+
+    await wait_until(publication_committed)
+    next_webhook_id = await create_webhook(client)
+    next_payment = await submit_payment(client, next_webhook_id)
+    await wait_for_webhook(client, next_payment["payment_id"])
+    assert len(await get_webhook_requests(client, webhook_id)) == 1
+    payment_after = await get_payment(client, str(payment_id))
+    assert payment_after["processed_at"] == payment_before["processed_at"]
+    assert payment_after["status"] == payment_before["status"]

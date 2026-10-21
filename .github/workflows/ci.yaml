@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      TEST_COMPOSE_PROJECT: secunda-ci-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Проверка конфигурации
+        run: |
+          docker compose -f compose.yaml -f compose.test.yaml config --quiet
+          bash -n scripts/test-compose.sh
+      - name: Тесты и восстановление после сбоев
+        run: bash scripts/test-compose.sh
