@@ -1,4 +1,4 @@
-"""Controllable HTTP receiver used only on the isolated Compose network."""
+"""Управляемый HTTP-получатель webhook для изолированной сети Compose."""
 
 import asyncio
 from dataclasses import dataclass, field

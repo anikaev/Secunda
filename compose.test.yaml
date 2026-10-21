@@ -1,4 +1,4 @@
-# Use with compose.yaml and a separate project name; no host ports or .env required.
+# Дополнение к compose.yaml для отдельного проекта: порты хоста и .env не нужны.
 name: secunda-integration
 
 x-test-environment: &test-environment

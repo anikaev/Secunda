@@ -102,7 +102,7 @@ async def test_concurrent_creation_and_duplicate_event(
     assert hook["payload"]["event_type"] == "payment.processed"
     assert hook["event_id"] == hook["idempotency_key"] == payload["event_id"]
 
-    # Real AMQP redelivery, followed by a sentinel on the same FIFO queue.
+    # Повторно публикуем AMQP-событие, затем контрольное событие в ту же очередь FIFO.
     connection = await aio_pika.connect_robust(os.environ["RABBITMQ_URL"])
     async with connection:
         channel = await connection.channel(publisher_confirms=True)
@@ -184,7 +184,7 @@ async def test_payment_and_outbox_are_rolled_back_together(engine: AsyncEngine) 
     token = uuid4().hex
     outbox_ids = []
 
-    # Invalid transaction-local topic forces a real outbox constraint failure at commit.
+    # Некорректная тема события вызывает нарушение ограничения outbox при фиксации транзакции.
     def corrupt_outbox(session, flush_context, instances):
         for obj in session.new:
             if isinstance(obj, OutboxEvent):

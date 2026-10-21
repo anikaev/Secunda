@@ -2,8 +2,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# Stable isolated project; all ports are internal and all volumes belong to this run.
-# Override when running multiple copies concurrently.
+# Изолированный проект: порты доступны внутри сети, тома принадлежат тестовому стенду.
+# Для одновременного запуска нескольких копий задайте другое имя проекта.
 project="${TEST_COMPOSE_PROJECT:-secunda-integration}"
 compose=(docker compose -p "$project" -f compose.yaml -f compose.test.yaml)
 if [ -n "${TEST_COMPOSE_OVERRIDE:-}" ]; then

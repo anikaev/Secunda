@@ -1,4 +1,4 @@
-"""Acceptance checks run around actual service stops by scripts/test-compose.sh."""
+"""Приёмочные проверки с реальной остановкой сервисов через scripts/test-compose.sh."""
 
 import asyncio
 import json

@@ -1,1 +1,1 @@
-"""Unit and integration checks for the payment service."""
+"""Модульные и интеграционные проверки платёжного сервиса."""
