@@ -226,7 +226,7 @@ TEST_COMPOSE_PROJECT=secunda-check-2 bash scripts/test-compose.sh
 ```
 
 Полный прогон выполнен на Docker Engine 29.0.1 и Compose 2.40.3:
-**54 unit-теста, 6 интеграционных тестов и все 4 сценария восстановления прошли**.
+**54 unit-теста, 18 интеграционных тестов и все 4 сценария восстановления прошли**.
 `ruff check`, `ruff format --check` и `alembic check` также прошли.
 
 Проверяемые сценарии:
